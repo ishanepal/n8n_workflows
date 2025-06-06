@@ -1,0 +1,104 @@
+{
+  "name": "AI Agent",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "5ba4d7e7-8ed9-4c6d-8496-924e0b93bac8",
+      "name": "When chat message received",
+      "webhookId": "e1e3f928-934e-4389-9d73-fc3cafa26a8b"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "a5a25a08-5ee7-49a9-8b69-3badeaa82301",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "tinyllama:1.1b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        80,
+        220
+      ],
+      "id": "3d296dcb-1d8f-46fe-8131-9dcf09105bc2",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "2hwAD4eQScFXPtnR",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        220
+      ],
+      "id": "026fcd47-ada3-4f55-a3f0-453dd0d1c57d",
+      "name": "Structured Output Parser"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "c1c2b2dc-9070-4807-b5f5-701b83c4697d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a31ed7e42a7c661bf00c07e2862e4947b527dd00528114238e497c593994ede9"
+  },
+  "id": "W45GlVTY3CBStC6m",
+  "tags": []
+}

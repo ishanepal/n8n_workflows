@@ -1,0 +1,148 @@
+{
+  "name": "If trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "ipo-webhook",
+        "responseMode": "responseNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "brand",
+                "value": "workflow"
+              },
+              {
+                "name": "action",
+                "value": "unsubscribe"
+              }
+            ]
+          }
+        }
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -40,
+        -40
+      ],
+      "id": "53df4ae7-74ce-451a-8fde-5dc1419e968a",
+      "name": "Webhook",
+      "webhookId": "f3a51f5a-4be3-4ddc-88d8-7b3dabbe8030"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "faead503-3e32-4bbb-8391-03b9bd9737a7",
+              "leftValue": "={{ $json.query.brand }}",
+              "rightValue": "workflow",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            },
+            {
+              "id": "e9237f33-6e0e-4059-8c25-b083da27cb32",
+              "leftValue": "={{ $json.query.action }}",
+              "rightValue": "unsubscribe",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        180,
+        -40
+      ],
+      "id": "5f9ba392-15d7-497e-b258-49bddaa951ad",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "respondWith": "redirect",
+        "redirectURL": "https://inside.nku.edu/it/webmail.html",
+        "options": {
+          "responseCode": 302
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        400,
+        -140
+      ],
+      "id": "5f8d9902-cb3f-4b94-b6c4-9ce263f64e57",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        400,
+        60
+      ],
+      "id": "83c19fac-0394-4f0d-9b7c-2db56896a186",
+      "name": "No Operation, do nothing"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Operation, do nothing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "b71ecae3-d41f-48d0-b3ec-1202d476dc51",
+  "meta": {
+    "instanceId": "a31ed7e42a7c661bf00c07e2862e4947b527dd00528114238e497c593994ede9"
+  },
+  "id": "qVATOIRJ5Y7GDaAG",
+  "tags": []
+}

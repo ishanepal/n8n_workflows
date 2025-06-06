@@ -1,0 +1,186 @@
+{
+  "name": "Classification Trigger",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "classify",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -200,
+        220
+      ],
+      "id": "c57bfc47-747e-4713-a3e2-232edde370a7",
+      "name": "Webhook",
+      "webhookId": "cff2af31-2cda-4c60-a014-e4f528f13904"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "{\n  \"built_prompt\": {{$node[\"Build Classification Prompt\"].json[\"prompt\"]}}\n}\n",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        440,
+        0
+      ],
+      "id": "0dab4c9f-270c-4654-a3e9-954f914e390d",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// This code runs once per incoming item (we only expect 1).\nconst payload = items[0].json.processed_payload;\n\n// build a single string prompt for tinyllama\nconst prompt = `\nYou are an output‐classifier. The incoming JSON is:\n${JSON.stringify(payload, null, 2)}\n\nPlease respond with a JSON containing:\n  {\n    \"classification\": <one_of [\n      \"Security Controls Management\",\n      \"User Actions\",\n      \"Managerial Insights\",\n      \"Policy Compliance\"\n    ] >,\n    \"reason\": <brief explanation (max 50 words)>\n  }\nDo NOT output anything else.\n`;\n\nreturn [\n  {\n    json: {\n      prompt: prompt.trim()\n    }\n  }\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "9b3f746d-3af4-489f-8e1a-b67654616712",
+      "name": "Build Classification Prompt"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are a security‐output classifier.  The incoming JSON is:\n\n{{$json[\"body\"][\"processed_payload\"] | json}}\n\nReturn only valid JSON with the following two fields:\n{\n  \"classification\": <one of [\"Security Controls Management\",\"User Actions\",\"Managerial Insights\",\"Policy Compliance\"]>,\n  \"reason\": <brief explanation (max 50 words)>\n}\nDo NOT output anything else (no bullet points, no markdown, no extra commentary—only raw JSON).\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        20,
+        220
+      ],
+      "id": "3b1fb37f-59db-4443-9834-d18162329b34",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"classification\": {\n      \"type\": \"string\",\n      \"enum\": [\n        \"Security Controls Management\",\n        \"User Actions\",\n        \"Managerial Insights\",\n        \"Policy Compliance\"\n      ]\n    },\n    \"reason\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\"classification\", \"reason\"],\n  \"additionalProperties\": false\n}\n"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        300,
+        400
+      ],
+      "id": "6920a633-e615-4a3a-b1e3-e1ef9d21b517",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "model": "tinyllama:1.1b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        440
+      ],
+      "id": "2287c2f2-6c9f-4898-808d-806aed6f358b",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "2hwAD4eQScFXPtnR",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"classification\": {{$node[\"AI Agent\"].json[\"classification\"]}},\n  \"reason\": {{$node[\"AI Agent\"].json[\"reason\"]}}\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        380,
+        220
+      ],
+      "id": "bb1afbf0-0199-4e33-b06b-202f53e59c83",
+      "name": "Respond to Webhook1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Classification Prompt": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ollama Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "be13122e-9be5-425b-8d5e-ef93640d4367",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a31ed7e42a7c661bf00c07e2862e4947b527dd00528114238e497c593994ede9"
+  },
+  "id": "EXVJn6RUiDe2HbD4",
+  "tags": []
+}
