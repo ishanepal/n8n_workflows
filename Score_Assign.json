@@ -1,0 +1,177 @@
+{
+  "name": "Score Assign",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "security_alert_mvp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -280,
+        0
+      ],
+      "id": "067098b7-e1f7-431e-bd5b-7fb60524d96a",
+      "name": "Webhook",
+      "webhookId": "90d2f56f-76db-4d94-a869-64e00b16a8e4"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1e5414dc-cc26-4d0a-a03e-888772ebf98f",
+              "name": "body.body.processed_payload.summary",
+              "value": "={{ $json.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "cce42a73-da93-426c-a01d-599b1dfaa5a5",
+              "name": "body.body.processed_payload.risk_indicators",
+              "value": "={{ $json.risk_indicators }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        200,
+        0
+      ],
+      "id": "85f2fc9f-e568-45b7-99c1-6039ef68dcd9",
+      "name": "Extract Summary + Risks"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "JSON",
+        "body": "={{ JSON.stringify({\n  model: \"tinyllama:1.1b\",\n  prompt: `Evaluate the following summary for security risk: \"${$json.summary}\" based on risk indicators: ${$json.risk_indicators}. Respond with a risk category (low, medium, high) and a numeric score (0-10).`,\n  stream: false\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        400,
+        0
+      ],
+      "id": "fc4ddec4-9c28-4a5a-951c-b1a26514e092",
+      "name": "Query AI"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Hardcoded policy weights\nconst policyWeights = {\n  \"after_hours_access\": 2,\n  \"geo_location_mismatch\": 3,\n  \"admin_access_attempt\": 5\n};\n\nconst input = $json;\nconst indicators = input.risk_indicators || [];\n\n// Compute policy-based score\nlet policyScore = 0;\nlet matched = [];\nfor (const i of indicators) {\n  if (policyWeights[i]) {\n    matched.push(i);\n    policyScore += policyWeights[i];\n  }\n}\n\n// Parse AI response\nlet aiScore = 0;\nlet aiCategory = \"unknown\";\ntry {\n  const raw = input.response;\n  const match = raw.match(/(low|medium|high)/i);\n  const scoreMatch = raw.match(/(\\d+(\\.\\d+)?)/);\n  aiCategory = match ? match[1].toLowerCase() : \"unknown\";\n  aiScore = scoreMatch ? parseFloat(scoreMatch[0]) : 0;\n} catch (e) {}\n\nconst finalScore = (policyScore + aiScore) / 2;\nlet recommendation = \"Log only\";\nif (finalScore >= 7) recommendation = \"Block + Alert\";\nelse if (finalScore >= 4) recommendation = \"Flag for Review\";\n\nreturn [{\n  json: {\n    ai_category: aiCategory,\n    ai_score: aiScore,\n    policy_score: policyScore,\n    matched_policies: matched,\n    final_score: finalScore,\n    recommendation\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        0
+      ],
+      "id": "10b32ae1-ea34-4feb-afec-b420b172ede9",
+      "name": "Compute Scores"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        860,
+        0
+      ],
+      "id": "9bee1fd9-31a3-44ca-a476-0031af16ad39",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json.body.body.processed_payload || {};\n\nreturn [{\n  json: {\n    summary: payload.summary || \"\",\n    risk_indicators: payload.risk_indicators || []\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -60,
+        0
+      ],
+      "id": "1d9171b1-aae1-4413-be13-977cf7944794",
+      "name": "Code"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Compute Scores": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query AI": {
+      "main": [
+        [
+          {
+            "node": "Compute Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Summary + Risks": {
+      "main": [
+        [
+          {
+            "node": "Query AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Extract Summary + Risks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "58c87461-fe17-4764-a144-28f498721b8a",
+  "meta": {
+    "instanceId": "a31ed7e42a7c661bf00c07e2862e4947b527dd00528114238e497c593994ede9"
+  },
+  "id": "k4ZQvtXAujj1uial",
+  "tags": []
+}
