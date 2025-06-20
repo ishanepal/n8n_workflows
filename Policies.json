@@ -1,0 +1,225 @@
+{
+  "name": "My workflow 4",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "security_alert_mvp",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        -40
+      ],
+      "id": "dc0d11de-7ce6-485c-979c-6b5470111c41",
+      "name": "Webhook",
+      "webhookId": "451698b9-9595-434d-8b6b-c7d58c7926d8"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json.body.body.processed_payload || {};\n\nreturn [{\n  json: {\n    summary: payload.summary || \"\",\n    risk_indicators: payload.risk_indicators || []\n  }\n}];\n// const indicators = $input.first().json.body.body.processed_payload.risk_indicators || [];\n// return indicators.map(indicator => ({\n//   json: { indicator }\n// }));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -20,
+        -40
+      ],
+      "id": "fdccce2e-b27b-497d-b9b3-9355ff57140c",
+      "name": "Extract JSON"
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "Policies",
+              "type": "arrayValue",
+              "arrayValue": "[   {     \"policyName\": \"Remote Work Device and Network Usage Policy\",     \"policyId\": \"POL-RW-001\",     \"version\": \"1.1\",     \"effectiveDate\": \"2024-01-15\",     \"lastRevisedDate\": \"2024-03-10\",     \"category\": \"Remote Work\",     \"description\": \"Outlines security protocols for personal and company devices used during remote work and specifies acceptable network types.\",     \"rules\": [       {         \"ruleId\": \"RWR-001-A\",         \"ruleDescription\": \"All personal devices used for company work must be registered with IT and have mandatory security software installed.\",         \"severity\": \"High\",         \"complianceRequirements\": \"Install Endpoint Protection, VPN client; Register device.\",         \"affectedGroups\": [\"All Remote Employees\", \"Contractors\"]       },       {         \"ruleId\": \"RWR-001-B\",         \"ruleDescription\": \"Company work shall only be performed on secure, password-protected home networks or company-provided VPN connections.\",         \"severity\": \"High\",         \"complianceRequirements\": \"Do not use public Wi-Fi without explicit IT approval and VPN.\",         \"affectedGroups\": [\"All Remote Employees\"]       }     ],     \"trainingRequired\": true,     \"trainingModuleId\": \"TRN-RW-001-MODULE\",     \"reviewFrequency\": \"Annually\",     \"contactPerson\": \"security@example.com\"   },   {     \"policyName\": \"Secure Premises Access Control Policy\",     \"policyId\": \"POL-AC-002\",     \"version\": \"2.0\",     \"effectiveDate\": \"2023-11-01\",     \"lastRevisedDate\": \"2024-05-20\",     \"category\": \"Access Control\",     \"description\": \"Governs the use of access cards and clearance for entry into secure company premises and restricted areas.\",     \"rules\": [       {         \"ruleId\": \"ACR-002-A\",         \"ruleDescription\": \"Badge/access card usage is mandatory for all entries and exits from secure premises.\",         \"severity\": \"Critical\",         \"complianceRequirements\": \"Scan badge upon entry and exit; Do not tailgate.\",         \"affectedGroups\": [\"All Employees\", \"Visitors (escorted)\"]       },       {         \"ruleId\": \"ACR-002-B\",         \"ruleDescription\": \"Access to classified materials is strictly based on current security clearance levels.\",         \"severity\": \"Critical\",         \"complianceRequirements\": \"Verify clearance before accessing sensitive documents/areas.\",         \"affectedGroups\": [\"Designated Personnel\"]       }     ],     \"trainingRequired\": false,     \"trainingModuleId\": null,     \"reviewFrequency\": \"Bi-annually\",     \"contactPerson\": \"facilities-security@example.com\"   } ]"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        -20,
+        160
+      ],
+      "id": "4715f19e-f85f-4151-ae22-1b80c741b75d",
+      "name": "Static Policy Data"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combinationMode": "mergeByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -40
+      ],
+      "id": "30340fa9-b5f6-413a-aec2-b16d372b2421",
+      "name": "Merge Input + Policy"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "JSON",
+        "body": "={{ JSON.stringify({\n  model: \"tinyllama:1.1b\",\n  prompt: `Evaluate the following summary for security risk: \"${$json.summary}\" based on risk indicators: ${$json.risk_indicators}. Respond with a risk category (low, medium, high) and a numeric score (0-10). Based on the policy details in  $json.body.body.processed_payload.risk_indicators, use the formula: sum($json.body.body.processed_payload.risk_indicators.after_hours_access+$json.body.body.processed_payload.risk_indicators.geo_location_mismatch)/2`,\n  stream: false\n}) }}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        -40
+      ],
+      "id": "13cbe464-ef5b-497c-84c5-ba3359d396b8",
+      "name": "Query AI"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Use $json for combined input\nconst input = $('Webhook').first().json.body.body;\nconst indicators = input.risk_indicators || [];\nconst policyWeights = input;\n\nlet policyScore = 0;\nlet matched = [];\nfor (const i of indicators) {\n  if (policyWeights[i]) {\n    matched.push(i);\n    policyScore += policyWeights[i];\n  }\n}\n\nlet aiScore = 0;\nlet aiCategory = \"unknown\";\ntry {\n  const raw = input.response;\n  const match = raw.match(/(low|medium|high)/i);\n  const scoreMatch = raw.match(/(\\d+(\\.\\d+)?)/);\n  aiCategory = match ? match[1].toLowerCase() : \"unknown\";\n  aiScore = scoreMatch ? parseFloat(scoreMatch[0]) : 0;\n} catch (e) {}\n\nconst finalScore = (policyScore + aiScore) / 2;\nlet recommendation = \"Log only\";\nif (finalScore >= 7) recommendation = \"Block + Alert\";\nelse if (finalScore >= 4) recommendation = \"Flag for Review\";\n\nreturn [{\n  json: {\n    ai_category: aiCategory,\n    ai_score: aiScore,\n    policy_score: policyScore,\n    matched_policies: matched,\n    final_score: finalScore,\n    recommendation\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        -40
+      ],
+      "id": "a37a4a00-8ce6-4688-a336-579b583ff698",
+      "name": "Compute Scores"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        -40
+      ],
+      "id": "1236084c-c57d-4536-bafd-c115b11050cb",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  item.json.myNewField = 1;\n}\n\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        160
+      ],
+      "id": "32d99c0a-7910-4d2b-b0b2-aeb8c98766c9",
+      "name": "Code"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract JSON",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Static Policy Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract JSON": {
+      "main": [
+        [
+          {
+            "node": "Merge Input + Policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Static Policy Data": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Input + Policy": {
+      "main": [
+        [
+          {
+            "node": "Query AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Query AI": {
+      "main": [
+        [
+          {
+            "node": "Compute Scores",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Scores": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Merge Input + Policy",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a1890615-445a-479c-b6e5-48505c014332",
+  "meta": {
+    "instanceId": "a31ed7e42a7c661bf00c07e2862e4947b527dd00528114238e497c593994ede9"
+  },
+  "id": "R8T1AJMB8BsjVR2M",
+  "tags": []
+}
