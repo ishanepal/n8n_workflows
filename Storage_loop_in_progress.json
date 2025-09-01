@@ -1,0 +1,385 @@
+{
+  "name": "Storage loop in progress",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "policy-based-classify",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -320,
+        100
+      ],
+      "id": "07f3875e-493a-4777-9007-d31d03c01dc4",
+      "name": "Webhook",
+      "webhookId": "c628080c-2a47-4a7f-a3ce-7014c86fe946"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json.body?.body?.processed_payload || {};\nreturn [{json:{summary:payload.summary||\"\",risk_indicators:payload.risk_indicators||[]}}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "955197d7-dd29-424c-8860-bd4eb10e1769",
+      "name": "Extract Webhook Info"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"tinyllama:1.1b\",\n  prompt: `Evaluate the following summary for security risk: \"${$json.summary}\" based on risk indicators: ${$json.risk_indicators}. Respond with a risk category (low, medium, high) and a numeric score (0-10). Also provide a one‑line firewall rule suggestion if blocking is required.`,\n  stream: false\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "8440f7f0-19db-4918-94bb-f9758ab0050c",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"after_hours_access\": 2,\n  \"geo_location_mismatch\": 3,\n  \"unusual_device\": 1,\n  \"vpn_bypass\": 4\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        120,
+        220
+      ],
+      "id": "9ed99e72-fc86-4420-ad5f-8c953ff12206",
+      "name": "Set Risk Weights"
+    },
+    {
+      "parameters": {
+        "jsCode": "/***** Gather inputs *****/\nconst event      = $('Extract Webhook Info').first().json ;          // {summary, risk_indicators[]}\nconst weights    = $('Set Risk Weights').first().json || {};\nconst aiRaw      = $('HTTP Request').first().json.response;  \n// LLM raw string\n\n/***** 1. Policy‑based score *****/\nlet policyScore = 0;\nconst matchedRules = [];\n\nfor (const ind of event.risk_indicators) {\n  if (weights[ind]) {\n    matchedRules.push(ind);\n    policyScore += weights[ind];\n  }\n}\n\n/***** 2. Parse LLM output *****/\nlet aiScore = 0;\nlet aiCategory = \"unknown\";\nlet actionSnippet = \"\";\n\nif (typeof aiRaw === \"string\") {\n  // Match score like \"Score: 5/10\" or \"Blocking Required: 6.5/10\"\n  const scoreMatch = aiRaw.match(/(?:score.*?:\\s*)?(\\d+(?:\\.\\d+)?)(?:\\s*\\/\\s*10)?/i);\n  if (scoreMatch) aiScore = parseFloat(scoreMatch[1]);\n\n  // Match risk category e.g., \"(Low)\", \"Risk Level: Medium\"\n  const categoryMatch = aiRaw.match(/\\b(low|medium|high)\\b/i);\n  if (categoryMatch) aiCategory = categoryMatch[1].toLowerCase();\n\n  // Match action recommendation (very loosely)\n  const ruleMatch = aiRaw.match(/(?:firewall rule.*?:|suggestion.*?:)\\s*(.+)/i);\n  if (ruleMatch) actionSnippet = ruleMatch[1].trim();\n}\n\n/***** 4. Final Score + Recommendation *****/\nconst finalScore = (policyScore + aiScore) / 2;\nlet recommendation = \"Log only\";\n\nif (finalScore >= 7)      recommendation = \"Block + Alert\";\nelse if (finalScore >= 4) recommendation = \"Flag for Review\";\n\n/***** 5. Return Result *****/\nreturn [\n  {\n    json: {\n      matched_rules: matchedRules,\n      policy_score: policyScore,\n      ai_score: aiScore,\n      ai_category: aiCategory,\n      final_score: finalScore,\n      action_snippet: actionSnippet,\n      recommendation\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        100
+      ],
+      "id": "88f07825-b61f-4b60-a948-e952a9a0c993",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        1340,
+        -60
+      ],
+      "id": "402a3eb7-df92-4640-9ae5-6cb83782ef35",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        560,
+        100
+      ],
+      "id": "58307e35-733d-4f31-92ec-f4932df0b16d",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"tinyllama:1.1b\",\n  prompt: `Based on the $('Webhook').item.json.body.body input from the user and the policy weights such as: $json available to you, is this a violation?`,\n  stream: false\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        420
+      ],
+      "id": "3e771435-470c-42fd-9406-d213cb0e1eb9",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const newResult = $input.first().json;\nlet stored = [];\n$input.first().json.fileName\ntry {\n  const raw = Buffer.from($('Read Results File').binary.data.data, 'base64').toString();\n  stored = JSON.parse(raw);\n} catch (e) {\n  stored = [];\n}\n\n// Example similarity check using summary field\nconst isSimilar = (a, b) => a.summary?.trim() === b.summary?.trim();\n\nlet updated = false;\nfor (let i = 0; i < stored.length; i++) {\n  if (isSimilar(stored[i], newResult)) {\n    stored[i] = newResult; // update existing\n    updated = true;\n    break;\n  }\n}\nif (!updated) {\n  stored.push(newResult); // add new\n}\n\n// Return updated list as base64 for writing\nreturn [{\n  binary: {\n    data: {\n      data: Buffer.from(JSON.stringify(stored, null, 2)).toString('base64')\n    }\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1660,
+        740
+      ],
+      "id": "92ba8a94-0074-4495-9d91-f7c9b2da220f",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "operation": "toText",
+        "sourceProperty": "={{ $json.text }}",
+        "binaryPropertyName": "results.json",
+        "options": {
+          "encoding": "utf8"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [
+        1900,
+        740
+      ],
+      "id": "b6d48545-d41a-45c1-b2e5-acec6ffa9b61",
+      "name": "Convert to File"
+    },
+    {
+      "parameters": {
+        "operation": "write",
+        "fileName": "/Users/ishanepal/Library/CloudStorage/OneDrive-Personal/n8n_workflows/data/results.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        2120,
+        740
+      ],
+      "id": "90c4c2cd-8c96-484a-bac7-bfe803c9919e",
+      "name": "Read/Write Files from Disk1"
+    },
+    {
+      "parameters": {
+        "fileSelector": "/Users/ishanepal/Library/CloudStorage/OneDrive-Personal/n8n_workflows/data/results.json",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        720
+      ],
+      "id": "9c9c7d31-5971-435b-b9b0-fce7a915bb62",
+      "name": "Read Results File"
+    },
+    {
+      "parameters": {
+        "jsCode": "const newResult = $input.item.json;\nlet stored = [];\n\ntry {\n  const raw = Buffer.from($('Read Results File1').binary.data.data, 'base64').toString();\n  stored = JSON.parse(raw);\n} catch (e) {\n  stored = [];\n}\n\n// Check for similarity by summary\nconst isSimilar = (a, b) => a.summary?.trim().toLowerCase() === b.summary?.trim().toLowerCase();\n\nlet updated = false;\nfor (let i = 0; i < stored.length; i++) {\n  if (isSimilar(stored[i], newResult)) {\n    stored[i] = newResult;\n    updated = true;\n    break;\n  }\n}\n\nif (!updated) {\n  stored.push(newResult);\n}\n\nconst updatedJson = JSON.stringify(stored, null, 2);\n\nreturn [{\n  binary: {\n    data: {\n      data: Buffer.from(updatedJson).toString('base64')\n    }\n  },\n  json: {\n    status: \"updated\",\n    preview: updatedJson\n  }\n}];"
+      },
+      "id": "446bf21c-953f-4423-ae03-7aa92bf828a1",
+      "name": "Update Stored Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "/Users/ishanepal/Library/CloudStorage/OneDrive-Personal/n8n_workflows/data/results.json",
+        "options": {}
+      },
+      "id": "832076d5-40e1-4d47-ae02-3939be851012",
+      "name": "Write Stored Results",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1800,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "filePath": "/Users/ishanepal/Library/CloudStorage/OneDrive-Personal/n8n_workflows/data/results.json"
+      },
+      "id": "ab76a04a-7bcb-4869-af74-567466ef9a5f",
+      "name": "Read Results File1",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "convertToText"
+      },
+      "id": "ff281528-143b-4846-b3d8-b859fdb3ce3d",
+      "name": "Convert to File1",
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1,
+      "position": [
+        1560,
+        200
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Webhook Info",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Set Risk Weights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Webhook Info": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Read Results File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Convert to File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File": {
+      "main": [
+        [
+          {
+            "node": "Read/Write Files from Disk1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Results File": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Stored Results": {
+      "main": [
+        [
+          {
+            "node": "Convert to File1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Results File1": {
+      "main": [
+        [
+          {
+            "node": "Update Stored Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to File1": {
+      "main": [
+        [
+          {
+            "node": "Write Stored Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "8f83bd93-272f-46f4-ab91-7029cf5354ba",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a31ed7e42a7c661bf00c07e2862e4947b527dd00528114238e497c593994ede9"
+  },
+  "id": "bFSAYjtb9RBEAskt",
+  "tags": []
+}

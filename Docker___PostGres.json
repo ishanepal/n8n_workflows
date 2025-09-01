@@ -1,0 +1,94 @@
+{
+  "name": "Docker + PostGres",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "id": "12d45f2a-8728-4cc7-9940-16b379d58c0d",
+      "name": "When chat message received",
+      "webhookId": "d964efad-bd03-4e5f-889f-85a2da1b7f00"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "id": "9e38c412-2be0-4c6d-879e-5e401db816e2",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": "tinyllama:1.1b",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOllama",
+      "typeVersion": 1,
+      "position": [
+        80,
+        220
+      ],
+      "id": "41b5eb91-d89a-4c58-ad2c-1b571a80805b",
+      "name": "Ollama Chat Model",
+      "credentials": {
+        "ollamaApi": {
+          "id": "2hwAD4eQScFXPtnR",
+          "name": "Ollama account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [
+        320,
+        220
+      ],
+      "id": "5b784611-43ff-4c60-8986-38e135f01ed1",
+      "name": "Postgres Chat Memory",
+      "credentials": {
+        "postgres": {
+          "id": "TYrdfHYcameL8eBT",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "32c2c878-9d17-4dd5-b4da-c716f2fcc002",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a31ed7e42a7c661bf00c07e2862e4947b527dd00528114238e497c593994ede9"
+  },
+  "id": "mmcuQyNv8b5hk2LD",
+  "tags": []
+}
