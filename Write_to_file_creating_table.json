@@ -1,0 +1,289 @@
+{
+  "name": "Write_to_file_creating_table",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "policy-based-classify",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -432,
+        192
+      ],
+      "id": "a59cb0da-c132-47a2-b123-edb3d84d5feb",
+      "name": "Webhook",
+      "webhookId": "c628080c-2a47-4a7f-a3ce-7014c86fe946"
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $input.first().json.body?.body?.processed_payload || {};\nreturn [{json:{summary:payload.summary||\"\",risk_indicators:payload.risk_indicators||[]}}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        80
+      ],
+      "id": "a251463d-ec4b-49e0-a439-b63e935e5f76",
+      "name": "Extract Webhook Info"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"tinyllama:1.1b\",\n  prompt: `Evaluate the following summary for security risk: \"${$json.summary}\" based on risk indicators: ${$json.risk_indicators}. Respond with a risk category (low, medium, high) and a numeric score (0-10). Also provide a one‑line firewall rule suggestion if blocking is required.`,\n  stream: false\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        112,
+        80
+      ],
+      "id": "95ea8370-9433-4721-b46e-002a1a1da073",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "{\n  \"after_hours_access\": 2,\n  \"geo_location_mismatch\": 3,\n  \"unusual_device\": 1,\n  \"vpn_bypass\": 4\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        16,
+        304
+      ],
+      "id": "6c57e0cc-1cbf-4bb0-a557-cda090723d85",
+      "name": "Set Risk Weights"
+    },
+    {
+      "parameters": {
+        "jsCode": "/***** Gather inputs *****/\nconst event      = $('Extract Webhook Info').first().json ;          // {summary, risk_indicators[]}\nconst weights    = $('Set Risk Weights').first().json || {};\nconst aiRaw      = $('HTTP Request').first().json.response;  \n// LLM raw string\n\n/***** 1. Policy‑based score *****/\nlet policyScore = 0;\nconst matchedRules = [];\n\nfor (const ind of event.risk_indicators) {\n  if (weights[ind]) {\n    matchedRules.push(ind);\n    policyScore += weights[ind];\n  }\n}\n\n/***** 2. Parse LLM output *****/\nlet aiScore = 0;\nlet aiCategory = \"unknown\";\nlet actionSnippet = \"\";\n\nif (typeof aiRaw === \"string\") {\n  // Match score like \"Score: 5/10\" or \"Blocking Required: 6.5/10\"\n  const scoreMatch = aiRaw.match(/(?:score.*?:\\s*)?(\\d+(?:\\.\\d+)?)(?:\\s*\\/\\s*10)?/i);\n  if (scoreMatch) aiScore = parseFloat(scoreMatch[1]);\n\n  // Match risk category e.g., \"(Low)\", \"Risk Level: Medium\"\n  const categoryMatch = aiRaw.match(/\\b(low|medium|high)\\b/i);\n  if (categoryMatch) aiCategory = categoryMatch[1].toLowerCase();\n\n  // Match action recommendation (very loosely)\n  const ruleMatch = aiRaw.match(/(?:firewall rule.*?:|suggestion.*?:)\\s*(.+)/i);\n  if (ruleMatch) actionSnippet = ruleMatch[1].trim();\n}\n\n/***** 4. Final Score + Recommendation *****/\nconst finalScore = (policyScore + aiScore) / 2;\nlet recommendation = \"Log only\";\n\nif (finalScore >= 7)      recommendation = \"Block + Alert\";\nelse if (finalScore >= 4) recommendation = \"Flag for Review\";\n\n/***** 5. Return Result *****/\nreturn [\n  {\n    json: {\n      matched_rules: matchedRules,\n      policy_score: policyScore,\n      ai_score: aiScore,\n      ai_category: aiCategory,\n      final_score: finalScore,\n      action_snippet: actionSnippet,\n      recommendation\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        688,
+        192
+      ],
+      "id": "4e1edb6d-e5a3-4687-a0c1-0e9e26cadaea",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.3,
+      "position": [
+        1136,
+        192
+      ],
+      "id": "53e6adc2-7bd1-4f50-86b8-e1108ddd1545",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.1,
+      "position": [
+        448,
+        192
+      ],
+      "id": "f5f5aa9d-32ee-4149-a54e-7b97010a092d",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"tinyllama:1.1b\",\n  prompt: `Based on the $('Webhook').item.json.body.body input from the user and the policy weights such as: $json available to you, is this a violation?`,\n  stream: false\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        128,
+        512
+      ],
+      "id": "2cb7516f-55b2-4893-ab7b-f3d332ed0f5d",
+      "name": "HTTP Request1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentURL": "=https://docs.google.com/document/d/14iQ9elfQmS3wp5vS-4Kxj2Wv_-P9iGksoBEAc4EyZsw/edit?tab=t.po3y1pndltg",
+        "actionsUi": {
+          "actionFields": [
+            {
+              "action": "insert",
+              "text": "=--------\nPrompt:{{ $('Extract Webhook Info').item.json.summary }}\n{{ $('Extract Webhook Info').item.json.risk_indicators }}\n\nOutput #:\nMatched policies: {{ $('Code').item.json.matched_rules }}\nPolicy Score: {{ $('Code').item.json.policy_score }}\nAI Score: {{ $('Code').item.json.ai_score }}\nAI Category: {{ $('Code').item.json.ai_category }}\nFinal Score: {{$('Code').item.json.final_score}}\nRecommendation: {{ $('Code').item.json.recommendation }}\n--------------------------"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.googleDocs",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        304
+      ],
+      "id": "3b29b452-0930-42cf-a9e4-6a5940eefc6a",
+      "name": "Update a document",
+      "credentials": {
+        "googleDocsOAuth2Api": {
+          "id": "n7WjFLbTywcEuPj3",
+          "name": "Google Docs account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO risk_events (\n  summary,\n  risk_indicators,\n  policy_score,\n  ai_score,\n  ai_category,\n  final_score,\n  recommendation,\n  action_snippet\n)\nVALUES (\n  '{{ $(\"Extract Webhook Info\").item.json.summary }}',\n  '{{ \"{\" + $(\"Extract Webhook Info\").item.json.risk_indicators.join(\",\") + \"}\" }}'::text[],\n  {{$json[\"policy_score\"]}},\n  {{$json[\"ai_score\"]}},\n  '{{$json[\"ai_category\"]}}',\n  {{$json[\"final_score\"]}},\n  '{{$json[\"recommendation\"]}}',\n  '{{$json[\"action_snippet\"]}}'\n);\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        896,
+        192
+      ],
+      "id": "088cc1e1-3c7f-4b8b-a38f-d2fceec97aa5",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "ZP3o33iBK4NKNgHS",
+          "name": "Postgres account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Extract Webhook Info",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Set Risk Weights",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Webhook Info": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Risk Weights": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Webhook": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Update a document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update a document": {
+      "main": [
+        []
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "93fb9eca-527c-4536-976f-2ee7b89f85d7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "620b2a0f5feebea1a2a205a6e8639a08bb5e4924a817e29485c2a3eb7ecb968e"
+  },
+  "id": "zOiiX23bSDMY4OsY",
+  "tags": []
+}

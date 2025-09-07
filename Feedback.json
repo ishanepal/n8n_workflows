@@ -1,0 +1,179 @@
+{
+  "name": "Feedback",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {}
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "id": "9eeff172-ebb7-4f90-9435-51e4236432d7",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM risk_events\nWHERE timestamp > NOW() - INTERVAL '7 days'\nORDER BY timestamp DESC\nLIMIT 100;\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        208,
+        0
+      ],
+      "id": "4fe3f805-eebb-4366-8dd9-6008d9e643f3",
+      "name": "Execute a SQL query",
+      "credentials": {
+        "postgres": {
+          "id": "ZP3o33iBK4NKNgHS",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = items.map(item => item.json);\n\nlet indicatorCounts = {};\nlet scoreSum = 0;\nlet count = 0;\nlet categoryCounts = {};\n\nfor (const row of rows) {\n  for (const indicator of row.risk_indicators || []) {\n    indicatorCounts[indicator] = (indicatorCounts[indicator] || 0) + 1;\n  }\n\n  if (row.final_score) {\n    scoreSum += row.final_score;\n    count++;\n  }\n\n  const cat = row.ai_category?.toLowerCase();\n  if (cat) categoryCounts[cat] = (categoryCounts[cat] || 0) + 1;\n}\n\nconst avgScore = count > 0 ? (scoreSum / count).toFixed(2) : 0;\n\nreturn [{\n  json: {\n    indicatorCounts,\n    categoryCounts,\n    avgScore,\n    summaryText: `\n      Average Score: ${avgScore}\n      Indicator Usage: ${JSON.stringify(indicatorCounts)}\n      Risk Categories: ${JSON.stringify(categoryCounts)}\n    `\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        0
+      ],
+      "id": "fd7c1862-881c-4423-9a39-6a8ce43de015",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:11434/api/generate",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: \"tinyllama:1.1b\",\n  prompt: `Given the following security scoring summary from the past week:\\n\\n${$json[\"summaryText\"]}\\n\\nSuggest:\\n1. Adjusted weights for risk indicators\\n2. Prompt improvements for better AI evaluation\\n3. Any rule updates based on trends\\n\\nRespond in JSON with keys: updated_weights, prompt_suggestion, rule_changes.`,\n  stream: false\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        832,
+        0
+      ],
+      "id": "eccdf0cc-f922-4c7b-93c6-b9c643d4098e",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5cb527cf-7c2b-4dfa-983b-04bd4f4844ea",
+              "name": "prompt",
+              "value": "=\"Given the following security scoring summary from the past week:\\n\\n\" + $json[\"summaryText\"] + \"\\n\\nSuggest:\\n1. Adjusted weights for risk indicators\\n2. Prompt improvements for better AI evaluation\\n3. Any rule updates based on trends\\n\\nRespond in JSON with keys: updated_weights, prompt_suggestion, rule_changes.\"\n",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        624,
+        0
+      ],
+      "id": "aee1929a-6416-429b-8549-258c63d6f929",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json[\"response\"];\n\n// Step 1: Remove markdown code block markers\nconst withoutCodeFences = raw.replace(/```json|```/g, \"\").trim();\n\n// Step 2: Extract only the JSON part (first object found)\nconst jsonMatch = withoutCodeFences.match(/\\{[\\s\\S]*?\\}/);\n\nif (!jsonMatch) {\n  throw new Error(\"No JSON object found in LLM response.\");\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonMatch[0]);\n} catch (e) {\n  throw new Error(\"Failed to parse extracted JSON: \" + e.message);\n}\n\nreturn [\n  {\n    json: parsed\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ],
+      "id": "ac2fff53-625d-438a-b2af-8548c99b2484",
+      "name": "Code1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Execute a SQL query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute a SQL query": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "59aaebf9-8c58-4f00-9413-b5c1b0d49161",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "620b2a0f5feebea1a2a205a6e8639a08bb5e4924a817e29485c2a3eb7ecb968e"
+  },
+  "id": "O1JJ59Rkmz1Bioho",
+  "tags": []
+}
