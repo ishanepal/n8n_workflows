@@ -95,6 +95,19 @@
     },
     {
       "parameters": {
+        "jsCode": "const suggestions = $input.first().json.updated_weight || {};\nconst reason = $input.first().json.prompt_suggestion || \"LLM suggested update\";\n\nlet rows = [];\nfor (const [indicator, suggested_weight] of Object.entries(suggestions)) {\n  rows.push({\n    json: {\n      indicator,\n      suggested_weight,\n      reason\n    }\n  });\n}\n\nreturn rows;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        0
+      ],
+      "id": "50682e35-2180-4f6b-8054-136b713874da",
+      "name": "Code to Record SQL"
+    },
+    {
+      "parameters": {
         "jsCode": "const raw = $json[\"response\"];\n\n// Step 1: Remove markdown code block markers\nconst withoutCodeFences = raw.replace(/```json|```/g, \"\").trim();\n\n// Step 2: Extract only the JSON part (first object found)\nconst jsonMatch = withoutCodeFences.match(/\\{[\\s\\S]*?\\}/);\n\nif (!jsonMatch) {\n  throw new Error(\"No JSON object found in LLM response.\");\n}\n\nlet parsed;\ntry {\n  parsed = JSON.parse(jsonMatch[0]);\n} catch (e) {\n  throw new Error(\"Failed to parse extracted JSON: \" + e.message);\n}\n\nreturn [\n  {\n    json: parsed\n  }\n];"
       },
       "type": "n8n-nodes-base.code",
@@ -104,7 +117,100 @@
         0
       ],
       "id": "ac2fff53-625d-438a-b2af-8548c99b2484",
-      "name": "Code1"
+      "name": "Code to parse llm info"
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "value": "weight_suggestions",
+          "mode": "list",
+          "cachedResultName": "weight_suggestions"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "indicator": "={{ $json.indicator }}",
+            "suggested_weight": "={{ $json.suggested_weight }}",
+            "reason": "={{ $json.reason }}",
+            "id": "=",
+            "suggested_at": "={{ $now }}"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "suggested_at",
+              "displayName": "suggested_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "indicator",
+              "displayName": "indicator",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "suggested_weight",
+              "displayName": "suggested_weight",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "reason",
+              "displayName": "reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1456,
+        0
+      ],
+      "id": "427b8140-1d55-4d3f-9974-4ef3458d329f",
+      "name": "Insert rows in a table",
+      "credentials": {
+        "postgres": {
+          "id": "ZP3o33iBK4NKNgHS",
+          "name": "Postgres account"
+        }
+      }
     }
   ],
   "pinData": {},
@@ -157,7 +263,29 @@
       "main": [
         [
           {
-            "node": "Code1",
+            "node": "Code to parse llm info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code to parse llm info": {
+      "main": [
+        [
+          {
+            "node": "Code to Record SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code to Record SQL": {
+      "main": [
+        [
+          {
+            "node": "Insert rows in a table",
             "type": "main",
             "index": 0
           }
@@ -169,7 +297,7 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "59aaebf9-8c58-4f00-9413-b5c1b0d49161",
+  "versionId": "f4ef4674-76f1-41af-9637-9335d6169c2c",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "620b2a0f5feebea1a2a205a6e8639a08bb5e4924a817e29485c2a3eb7ecb968e"
